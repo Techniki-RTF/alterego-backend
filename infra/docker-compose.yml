@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: alterego-postgres
+    environment:
+      POSTGRES_DB: alterego
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - alterego-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  alterego-postgres-data:
