@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="AlterEgo.Api/AlterEgo.Api.csproj" />
+  <Project Path="AlterEgo.Core/AlterEgo.Core.csproj" />
+  <Project Path="AlterEgo.Infrastructure/AlterEgo.Infrastructure.csproj" />
+</Solution>
