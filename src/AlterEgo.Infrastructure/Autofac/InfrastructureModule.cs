@@ -25,5 +25,9 @@ public class InfrastructureModule : Module
         builder.RegisterType<JwtService>()
             .As<IJwtService>()
             .SingleInstance();
+
+        builder.RegisterType<LlmService>()
+            .As<ILlmService>()
+            .SingleInstance();
     }
 }
