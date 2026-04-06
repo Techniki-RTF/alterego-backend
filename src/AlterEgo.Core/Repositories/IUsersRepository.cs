@@ -4,6 +4,7 @@ namespace AlterEgo.Core.Repositories;
 
 public interface IUsersRepository
 {
+    Task<List<UserEntity>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<UserEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<UserEntity?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default);
     Task<UserEntity?> GetByTelegramIdAsync(long telegramId, CancellationToken cancellationToken = default);

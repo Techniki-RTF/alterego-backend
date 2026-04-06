@@ -14,6 +14,11 @@ public class UsersRepository : IUsersRepository
         _context = context;
     }
 
+    public async Task<List<UserEntity>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Users.ToListAsync(cancellationToken);
+    }
+
     public async Task<UserEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.Users.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);

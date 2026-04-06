@@ -11,6 +11,7 @@ public class ApplicationDbContext : DbContext
     
     public DbSet<UserEntity> Users { get; private set; }
     public DbSet<RefreshTokenEntity> RefreshTokens { get; private set; }
+    public DbSet<MessageEntity> Messages { get; private set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,5 +26,15 @@ public class ApplicationDbContext : DbContext
             .WithMany()
             .HasForeignKey(x => x.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MessageEntity>()
+            .HasIndex(x => new { x.DialogId, x.TelegramMessageId })
+            .IsUnique();
+
+        modelBuilder.Entity<MessageEntity>()
+            .HasIndex(x => x.DialogId);
+
+        modelBuilder.Entity<MessageEntity>()
+            .HasIndex(x => new { x.DialogId, x.SenderTelegramId, x.CoverTextHash });
     }
 }

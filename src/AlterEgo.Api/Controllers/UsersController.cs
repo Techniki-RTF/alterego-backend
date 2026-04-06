@@ -65,6 +65,15 @@ public class UsersController : ControllerBase
         return CreatedAtAction(nameof(GetUser), new { id = user.Id }, response);
     }
 
+    [HttpGet]
+    [ProducesResponseType(typeof(List<UserResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAllUsers(CancellationToken cancellationToken)
+    {
+        var users = await _usersRepository.GetAllAsync(cancellationToken);
+        var response = users.Select(u => new UserResponse(u.Id, u.Username, u.TelegramId, u.Role, u.CreatedAt)).ToList();
+        return Ok(response);
+    }
+
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

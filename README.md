@@ -1,6 +1,41 @@
-# Alter Ego Backend
+# Alter Ego
 
-Backend API for Alter Ego application.
+- Backend API for Alter Ego application
+
+## How it Works
+
+1. **User A** types a real message → LLM generates innocent cover text → sends cover to Telegram
+2. **User B** receives cover message → decodes via plugin → sees original message
+3. Messages are matched by cover text hash + timestamp (works with different message IDs in p2p chats)
+
+## API Endpoints
+
+### Public
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/status` | Health check |
+| POST | `/api/auth/login` | Login |
+| POST | `/api/auth/refresh` | Refresh tokens |
+| POST | `/api/auth/logout` | Logout |
+
+### Protected (requires JWT)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/messages` | Store message, get cover text |
+| POST | `/api/messages/decode` | Decode cover text to original |
+| GET | `/api/messages/{dialogId}` | Get messages (cursor pagination) |
+| GET | `/api/messages/{dialogId}/updates` | Long-polling for new messages |
+| POST | `/api/llm/generate` | Generate cover text only (test purposes) |
+
+### Admin Only
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/users` | List all users |
+| POST | `/api/users` | Create user |
+| GET | `/api/users/{id}` | Get user |
+| PUT | `/api/users/{id}/password` | Set password |
+| PUT | `/api/users/{id}/role` | Change role |
+| DELETE | `/api/users/{id}` | Delete user |
 
 ## Requirements
 
@@ -43,7 +78,7 @@ cd src/AlterEgo.Api
 dotnet run
 ```
 
-API will be available at `http://localhost:5000`. Swagger UI at `/swagger`.
+API will be available at `http://localhost:5089`. Swagger UI at `/swagger`.
 
 ## Configuration
 

@@ -18,6 +18,10 @@ public class InfrastructureModule : Module
             .As<IRefreshTokensRepository>()
             .InstancePerLifetimeScope();
 
+        builder.RegisterType<MessagesRepository>()
+            .As<IMessagesRepository>()
+            .InstancePerLifetimeScope();
+
         builder.RegisterType<PasswordHasher>()
             .As<IPasswordHasher>()
             .SingleInstance();
