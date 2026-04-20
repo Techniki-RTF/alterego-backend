@@ -25,6 +25,7 @@
 | POST | `/api/messages/decode` | Decode cover text to original |
 | GET | `/api/messages/{dialogId}` | Get messages (cursor pagination) |
 | GET | `/api/messages/{dialogId}/updates` | Long-polling for new messages |
+| POST | `/api/messages/{dialogId}/context/reset` | Reset dialogue context |
 | POST | `/api/llm/generate` | Generate cover text only (test purposes) |
 
 ### Admin Only
