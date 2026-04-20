@@ -36,18 +36,18 @@ public class MessagesRepository : IMessagesRepository
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<List<MessageEntity>> GetByDialogIdAsync(long dialogId, long? beforeMessageId, int limit, CancellationToken cancellationToken = default)
+    public async Task<List<MessageEntity>> GetByDialogIdAsync(long dialogId, DateTimeOffset? beforeCreatedAt, int limit, CancellationToken cancellationToken = default)
     {
         var query = _context.Messages
             .Where(x => x.DialogId == dialogId);
 
-        if (beforeMessageId.HasValue)
+        if (beforeCreatedAt.HasValue)
         {
-            query = query.Where(x => x.TelegramMessageId < beforeMessageId.Value);
+            query = query.Where(x => x.CreatedAt < beforeCreatedAt.Value);
         }
 
         return await query
-            .OrderByDescending(x => x.TelegramMessageId)
+            .OrderByDescending(x => x.CreatedAt)
             .Take(limit)
             .ToListAsync(cancellationToken);
     }

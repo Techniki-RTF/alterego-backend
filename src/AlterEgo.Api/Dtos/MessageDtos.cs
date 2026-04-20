@@ -21,6 +21,6 @@ public record MessageResponse(
     string OriginalText,
     DateTimeOffset CreatedAt);
 
-public record MessagesPageResponse(List<MessageResponse> Messages, long? NextCursor);
+public record MessagesPageResponse(List<MessageResponse> Messages, DateTimeOffset? NextCursor);
 
 public record MessagesUpdatesResponse(List<MessageResponse> Messages, long? LastMessageId);

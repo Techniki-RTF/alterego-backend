@@ -152,18 +152,18 @@ public class MessagesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetMessages(
         long dialogId,
-        [FromQuery] long? beforeMessageId = null,
+        [FromQuery] DateTimeOffset? beforeCreatedAt = null,
         [FromQuery] int limit = DefaultLimit,
         CancellationToken cancellationToken = default)
     {
         limit = Math.Clamp(limit, 1, MaxLimit);
 
-        var messages = await _messagesRepository.GetByDialogIdAsync(dialogId, beforeMessageId, limit + 1, cancellationToken);
+        var messages = await _messagesRepository.GetByDialogIdAsync(dialogId, beforeCreatedAt, limit + 1, cancellationToken);
 
-        long? nextCursor = null;
+        DateTimeOffset? nextCursor = null;
         if (messages.Count > limit)
         {
-            nextCursor = messages[limit].TelegramMessageId;
+            nextCursor = messages[limit - 1].CreatedAt;
             messages = messages.Take(limit).ToList();
         }
 
