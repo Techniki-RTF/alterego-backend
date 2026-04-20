@@ -12,6 +12,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<UserEntity> Users { get; private set; }
     public DbSet<RefreshTokenEntity> RefreshTokens { get; private set; }
     public DbSet<MessageEntity> Messages { get; private set; }
+    public DbSet<DialogContextEntity> DialogContexts { get; private set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,5 +37,12 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<MessageEntity>()
             .HasIndex(x => new { x.DialogId, x.SenderTelegramId, x.CoverTextHash });
+
+        modelBuilder.Entity<DialogContextEntity>()
+            .HasKey(x => x.DialogId);
+
+        modelBuilder.Entity<DialogContextEntity>()
+            .Property(x => x.DialogId)
+            .ValueGeneratedNever();
     }
 }

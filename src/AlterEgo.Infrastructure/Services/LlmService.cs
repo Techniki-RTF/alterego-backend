@@ -59,6 +59,15 @@ public class LlmService : ILlmService
 
     public async Task<string> GenerateTextAsync(string message, CancellationToken cancellationToken = default)
     {
+        return await GenerateTextAsync(message, null, [], cancellationToken);
+    }
+
+    public async Task<string> GenerateTextAsync(
+        string message,
+        string? dialogContext,
+        IReadOnlyList<string> recentMessages,
+        CancellationToken cancellationToken = default)
+    {
         _logger.Debug("Generating steganographic text for message: {MessagePreview}",
             message.Length > 50 ? message[..50] + "..." : message);
 
@@ -76,7 +85,7 @@ public class LlmService : ILlmService
                 [
                     new GeminiContent
                     {
-                        Parts = [new GeminiPart { Text = $"Generate a cover message for: \"{message}\"" }]
+                        Parts = [new GeminiPart { Text = BuildUserPrompt(message, dialogContext, recentMessages) }]
                     }
                 ]
             };
@@ -95,6 +104,32 @@ public class LlmService : ILlmService
             _logger.Error(ex, "Failed to generate steganographic text");
             throw;
         }
+    }
+
+    private static string BuildUserPrompt(string message, string? dialogContext, IReadOnlyList<string> recentMessages)
+    {
+        var contextBlock = string.IsNullOrWhiteSpace(dialogContext)
+            ? "No dialog context yet."
+            : dialogContext;
+
+        var recentBlock = recentMessages.Count == 0
+            ? "No recent cover messages yet."
+            : string.Join(Environment.NewLine, recentMessages.Select((x, i) => $"{i + 1}. {x}"));
+
+        return $"""
+                Generate cover message for real message:
+                "{message}"
+
+                Dialog context:
+                {contextBlock}
+
+                Recent cover-message neighborhood (oldest to newest):
+                {recentBlock}
+
+                Use context and neighborhood only to keep conversation continuity, tone, and topics.
+                Never reveal or reuse real message content directly.
+                Return only generated cover message.
+                """;
     }
 
     private record GeminiRequest

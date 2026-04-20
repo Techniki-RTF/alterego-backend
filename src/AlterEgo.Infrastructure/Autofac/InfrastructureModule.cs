@@ -22,6 +22,10 @@ public class InfrastructureModule : Module
             .As<IMessagesRepository>()
             .InstancePerLifetimeScope();
 
+        builder.RegisterType<DialogContextsRepository>()
+            .As<IDialogContextsRepository>()
+            .InstancePerLifetimeScope();
+
         builder.RegisterType<PasswordHasher>()
             .As<IPasswordHasher>()
             .SingleInstance();

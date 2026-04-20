@@ -18,20 +18,25 @@ public class MessagesController : ControllerBase
     private const int DefaultLimit = 50;
     private const int MaxLimit = 100;
     private const int LongPollTimeoutSeconds = 30;
+    private const int ContextNeighborhoodSize = 8;
+    private const int ContextNotesMaxLength = 1200;
 
     private static readonly object WaitersLock = new();
     private static readonly ConcurrentDictionary<long, List<TaskCompletionSource<MessageEntity>>> Waiters = new();
 
     private readonly IMessagesRepository _messagesRepository;
+    private readonly IDialogContextsRepository _dialogContextsRepository;
     private readonly ILlmService _llmService;
     private readonly ILogger<MessagesController> _logger;
 
     public MessagesController(
         IMessagesRepository messagesRepository,
+        IDialogContextsRepository dialogContextsRepository,
         ILlmService llmService,
         ILogger<MessagesController> logger)
     {
         _messagesRepository = messagesRepository;
+        _dialogContextsRepository = dialogContextsRepository;
         _llmService = llmService;
         _logger = logger;
     }
@@ -60,10 +65,31 @@ public class MessagesController : ControllerBase
             return Conflict(new ErrorResponse("Message with this telegram ID already exists in this dialog"));
         }
 
+        var dialogContext = await _dialogContextsRepository.GetByDialogIdAsync(request.DialogId, cancellationToken);
+        if (dialogContext is null)
+        {
+            var now = DateTimeOffset.UtcNow;
+            dialogContext = new DialogContextEntity
+            {
+                DialogId = request.DialogId,
+                ContextNotes = string.Empty,
+                RecentCoverMessages = string.Empty,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            await _dialogContextsRepository.AddAsync(dialogContext, cancellationToken);
+        }
+
+        var recentMessages = ParseRecentCoverMessages(dialogContext.RecentCoverMessages);
+
         string coverText;
         try
         {
-            coverText = await _llmService.GenerateTextAsync(request.OriginalText, cancellationToken);
+            coverText = await _llmService.GenerateTextAsync(
+                request.OriginalText,
+                dialogContext.ContextNotes,
+                recentMessages,
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -71,6 +97,8 @@ public class MessagesController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new ErrorResponse("Failed to generate cover message"));
         }
+
+        UpdateDialogContext(dialogContext, coverText);
 
         var message = new MessageEntity
         {
@@ -101,6 +129,21 @@ public class MessagesController : ControllerBase
             message.CreatedAt);
 
         return CreatedAtAction(nameof(GetMessage), new { dialogId = message.DialogId, telegramMessageId = message.TelegramMessageId }, response);
+    }
+
+    [HttpPost("{dialogId:long}/context/reset")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ResetDialogContext(long dialogId, CancellationToken cancellationToken = default)
+    {
+        var dialogContext = await _dialogContextsRepository.GetByDialogIdAsync(dialogId, cancellationToken);
+        if (dialogContext is not null)
+        {
+            _dialogContextsRepository.Remove(dialogContext);
+            await _dialogContextsRepository.SaveChangesAsync(cancellationToken);
+        }
+
+        return NoContent();
     }
 
     [HttpGet("{dialogId:long}/{telegramMessageId:long}")]
@@ -273,4 +316,42 @@ public class MessagesController : ControllerBase
 
     private static MessageResponse ToResponse(MessageEntity message) =>
         new(message.Id, message.TelegramMessageId, message.SenderTelegramId, message.DialogId, message.OriginalText, message.CreatedAt);
+
+    private static List<string> ParseRecentCoverMessages(string serializedMessages)
+    {
+        if (string.IsNullOrWhiteSpace(serializedMessages))
+        {
+            return [];
+        }
+
+        return serializedMessages
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+    }
+
+    private static void UpdateDialogContext(DialogContextEntity dialogContext, string newCoverMessage)
+    {
+        var recentMessages = ParseRecentCoverMessages(dialogContext.RecentCoverMessages);
+        var normalizedCoverMessage = newCoverMessage.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        if (!string.IsNullOrWhiteSpace(normalizedCoverMessage))
+        {
+            recentMessages.Add(normalizedCoverMessage);
+        }
+
+        if (recentMessages.Count > ContextNeighborhoodSize)
+        {
+            recentMessages = recentMessages.TakeLast(ContextNeighborhoodSize).ToList();
+        }
+
+        dialogContext.RecentCoverMessages = string.Join('\n', recentMessages);
+        dialogContext.ContextNotes = Truncate(string.Join(" ", recentMessages), ContextNotesMaxLength);
+        dialogContext.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        return value.Length <= maxLength
+            ? value
+            : value[..maxLength];
+    }
 }
