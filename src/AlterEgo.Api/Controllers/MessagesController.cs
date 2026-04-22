@@ -41,13 +41,45 @@ public class MessagesController : ControllerBase
         _logger = logger;
     }
 
+    [HttpPost("mask")]
+    [ProducesResponseType(typeof(GenerateMaskResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GenerateMask([FromBody] GenerateMaskRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.OriginalText))
+        {
+            return BadRequest(new ErrorResponse("Original text cannot be empty"));
+        }
+
+        var dialogContext = await _dialogContextsRepository.GetByDialogIdAsync(request.DialogId, cancellationToken);
+        var recentMessages = ParseRecentCoverMessages(dialogContext?.RecentCoverMessages ?? string.Empty);
+
+        string coverText;
+        try
+        {
+            coverText = await _llmService.GenerateTextAsync(
+                request.OriginalText,
+                dialogContext?.ContextNotes,
+                recentMessages,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate cover text");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new ErrorResponse("Failed to generate cover message"));
+        }
+
+        return Ok(new GenerateMaskResponse(request.DialogId, request.OriginalText, coverText));
+    }
+
     [HttpPost]
-    [ProducesResponseType(typeof(CreateMessageResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(PushMessageResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> CreateMessage([FromBody] CreateMessageRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> PushMessage([FromBody] PushMessageRequest request, CancellationToken cancellationToken)
     {
         var senderTelegramId = GetCurrentUserTelegramId();
         if (senderTelegramId is null)
@@ -60,45 +92,18 @@ public class MessagesController : ControllerBase
             return BadRequest(new ErrorResponse("Original text cannot be empty"));
         }
 
+        if (string.IsNullOrWhiteSpace(request.CoverText))
+        {
+            return BadRequest(new ErrorResponse("Cover text cannot be empty"));
+        }
+
         if (await _messagesRepository.ExistsAsync(request.DialogId, request.TelegramMessageId, cancellationToken))
         {
             return Conflict(new ErrorResponse("Message with this telegram ID already exists in this dialog"));
         }
 
-        var dialogContext = await _dialogContextsRepository.GetByDialogIdAsync(request.DialogId, cancellationToken);
-        if (dialogContext is null)
-        {
-            var now = DateTimeOffset.UtcNow;
-            dialogContext = new DialogContextEntity
-            {
-                DialogId = request.DialogId,
-                ContextNotes = string.Empty,
-                RecentCoverMessages = string.Empty,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-            await _dialogContextsRepository.AddAsync(dialogContext, cancellationToken);
-        }
-
-        var recentMessages = ParseRecentCoverMessages(dialogContext.RecentCoverMessages);
-
-        string coverText;
-        try
-        {
-            coverText = await _llmService.GenerateTextAsync(
-                request.OriginalText,
-                dialogContext.ContextNotes,
-                recentMessages,
-                cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to generate cover text");
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new ErrorResponse("Failed to generate cover message"));
-        }
-
-        UpdateDialogContext(dialogContext, coverText);
+        var dialogContext = await GetOrCreateDialogContextAsync(request.DialogId, cancellationToken);
+        UpdateDialogContext(dialogContext, request.CoverText);
 
         var message = new MessageEntity
         {
@@ -107,8 +112,8 @@ public class MessagesController : ControllerBase
             SenderTelegramId = senderTelegramId.Value,
             DialogId = request.DialogId,
             OriginalText = request.OriginalText,
-            CoverTextHash = ComputeHash(coverText),
-            CreatedAt = DateTimeOffset.UtcNow
+            CoverTextHash = ComputeHash(request.CoverText),
+            CreatedAt = request.CreatedAt
         };
 
         await _messagesRepository.AddAsync(message, cancellationToken);
@@ -119,13 +124,12 @@ public class MessagesController : ControllerBase
 
         NotifyWaiters(request.DialogId, message);
 
-        var response = new CreateMessageResponse(
+        var response = new PushMessageResponse(
             message.Id,
             message.TelegramMessageId,
             message.SenderTelegramId,
             message.DialogId,
             message.OriginalText,
-            coverText,
             message.CreatedAt);
 
         return CreatedAtAction(nameof(GetMessage), new { dialogId = message.DialogId, telegramMessageId = message.TelegramMessageId }, response);
@@ -222,24 +226,24 @@ public class MessagesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetUpdates(
         long dialogId,
-        [FromQuery] long? afterMessageId = null,
+        [FromQuery] DateTimeOffset? afterCreatedAt = null,
         [FromQuery] int timeout = LongPollTimeoutSeconds,
         CancellationToken cancellationToken = default)
     {
         timeout = Math.Clamp(timeout, 0, 60);
 
-        var messages = await _messagesRepository.GetAfterMessageIdAsync(dialogId, afterMessageId, cancellationToken);
+        var messages = await _messagesRepository.GetAfterCreatedAtAsync(dialogId, afterCreatedAt, cancellationToken);
 
         if (messages.Count > 0)
         {
             return Ok(new MessagesUpdatesResponse(
                 messages.Select(ToResponse).ToList(),
-                messages.Max(m => m.TelegramMessageId)));
+                messages.Max(m => m.CreatedAt)));
         }
 
         if (timeout == 0)
         {
-            return Ok(new MessagesUpdatesResponse([], afterMessageId));
+            return Ok(new MessagesUpdatesResponse([], afterCreatedAt));
         }
 
         var tcs = new TaskCompletionSource<MessageEntity>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -259,18 +263,18 @@ public class MessagesController : ControllerBase
             {
                 var newMessage = await tcs.Task.WaitAsync(cts.Token);
 
-                if (afterMessageId.HasValue && newMessage.TelegramMessageId <= afterMessageId.Value)
+                if (afterCreatedAt.HasValue && newMessage.CreatedAt <= afterCreatedAt.Value)
                 {
-                    return Ok(new MessagesUpdatesResponse([], afterMessageId));
+                    return Ok(new MessagesUpdatesResponse([], afterCreatedAt));
                 }
 
                 return Ok(new MessagesUpdatesResponse(
                     [ToResponse(newMessage)],
-                    newMessage.TelegramMessageId));
+                    newMessage.CreatedAt));
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                return Ok(new MessagesUpdatesResponse([], afterMessageId));
+                return Ok(new MessagesUpdatesResponse([], afterCreatedAt));
             }
         }
         finally
@@ -306,6 +310,28 @@ public class MessagesController : ControllerBase
     {
         var telegramIdClaim = User.FindFirst("telegram_id")?.Value;
         return long.TryParse(telegramIdClaim, out var telegramId) ? telegramId : null;
+    }
+
+    private async Task<DialogContextEntity> GetOrCreateDialogContextAsync(long dialogId, CancellationToken cancellationToken)
+    {
+        var dialogContext = await _dialogContextsRepository.GetByDialogIdAsync(dialogId, cancellationToken);
+        if (dialogContext is not null)
+        {
+            return dialogContext;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        dialogContext = new DialogContextEntity
+        {
+            DialogId = dialogId,
+            ContextNotes = string.Empty,
+            RecentCoverMessages = string.Empty,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        await _dialogContextsRepository.AddAsync(dialogContext, cancellationToken);
+        return dialogContext;
     }
 
     private static string ComputeHash(string text)

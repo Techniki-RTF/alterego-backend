@@ -27,8 +27,8 @@ public class MessagesRepository : IMessagesRepository
         var maxTime = createdAt + tolerance;
 
         return await _context.Messages
-            .Where(x => x.DialogId == dialogId 
-                        && x.SenderTelegramId == senderTelegramId 
+            .Where(x => x.DialogId == dialogId
+                        && x.SenderTelegramId == senderTelegramId
                         && x.CoverTextHash == coverTextHash
                         && x.CreatedAt >= minTime
                         && x.CreatedAt <= maxTime)
@@ -52,18 +52,18 @@ public class MessagesRepository : IMessagesRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<List<MessageEntity>> GetAfterMessageIdAsync(long dialogId, long? afterMessageId, CancellationToken cancellationToken = default)
+    public async Task<List<MessageEntity>> GetAfterCreatedAtAsync(long dialogId, DateTimeOffset? afterCreatedAt, CancellationToken cancellationToken = default)
     {
         var query = _context.Messages
             .Where(x => x.DialogId == dialogId);
 
-        if (afterMessageId.HasValue)
+        if (afterCreatedAt.HasValue)
         {
-            query = query.Where(x => x.TelegramMessageId > afterMessageId.Value);
+            query = query.Where(x => x.CreatedAt > afterCreatedAt.Value);
         }
 
         return await query
-            .OrderBy(x => x.TelegramMessageId)
+            .OrderBy(x => x.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 

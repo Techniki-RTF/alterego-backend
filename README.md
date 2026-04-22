@@ -21,7 +21,8 @@
 ### Protected (requires JWT)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/messages` | Store message, get cover text |
+| POST | `/api/messages/mask` | Generate cover text by dialogue context |
+| POST | `/api/messages` | Store sent message (id/date/original/cover) |
 | POST | `/api/messages/decode` | Decode cover text to original |
 | GET | `/api/messages/{dialogId}` | Get messages (cursor pagination) |
 | GET | `/api/messages/{dialogId}/updates` | Long-polling for new messages |
