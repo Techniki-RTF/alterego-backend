@@ -1,7 +1,7 @@
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using AlterEgo.Core.Services;
+using LlmTornado;
+using LlmTornado.Chat.Models;
+using LlmTornado.Code;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 
@@ -11,9 +11,9 @@ public class LlmService : ILlmService
 {
     private const string SystemPrompt = """
         You are Alter Ego, a cover message generator for a private messenger plugin.
-        
+
         Your task: Transform the user's real message into an innocent-looking message that appears to be a casual conversation about books, movies, TV shows, or other entertainment topics.
-        
+
         Rules:
         - Generate a short, natural message (1-3 sentences) that could be part of a fan discussion
         - The cover message should feel like discussing characters, plot, scenes from fiction
@@ -22,45 +22,46 @@ public class LlmService : ILlmService
         - NEVER include anything from the original message - it must be completely unrelated
         - Make it sound like a real chat message, not formal writing
         - IMPORTANT: Always respond in the SAME LANGUAGE as the input message (Russian → Russian, English → English, etc.)
-        - Return ONLY the cover message, nothing else
-        
+        - Return ONLY the cover message, nothing else, no quotes around it
+
         Examples:
         Original: "Let's meet at 6pm"
         Cover: "Did you see how Hermione handled that scene? We should discuss it more!"
-        
+
         Original: "Я опаздываю"
         Cover: "Честно, путь Фродо через Мордор в тот момент казался таким долгим"
-        
+
         Original: "Bring the documents"
         Cover: "Don't forget that Thor's hammer scene, it was epic!"
         """;
 
-    private readonly HttpClient _httpClient;
-    private readonly string _apiKey;
-    private readonly string _modelName;
+    private readonly TornadoApi _api;
+    private readonly ChatModel _model;
     private readonly ILogger _logger;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    public LlmService(IConfiguration configuration)
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+        var providerStr = configuration["Llm:Provider"];
+        var apiKey = configuration["Llm:ApiKey"];
+        var modelName = configuration["Llm:ModelName"];
 
-    public LlmService(IConfiguration configuration, IHttpClientFactory httpClientFactory)
-    {
-        _apiKey = configuration["Gemini:ApiKey"]
-            ?? throw new InvalidOperationException("Gemini:ApiKey is not configured");
-        _modelName = configuration["Gemini:ModelName"] ?? "gemini-3-flash-preview";
-        _httpClient = httpClientFactory.CreateClient("Gemini");
+        if (string.IsNullOrEmpty(providerStr))
+            throw new InvalidOperationException("Llm:Provider is not configured");
+        if (string.IsNullOrEmpty(apiKey))
+            throw new InvalidOperationException("Llm:ApiKey is not configured");
+        if (string.IsNullOrEmpty(modelName))
+            throw new InvalidOperationException("Llm:ModelName is not configured");
+
+        var provider = Enum.Parse<LLmProviders>(providerStr, ignoreCase: true);
+        _api = new TornadoApi([new ProviderAuthentication(provider, apiKey)]);
+        _model = new ChatModel(modelName, provider);
 
         _logger = Log.ForContext<LlmService>();
-        _logger.Information("LLM Service initialized with model: {ModelName}", _modelName);
+        _logger.Information("LLM Service initialized with provider: {Provider}, model: {ModelName}", providerStr, modelName);
     }
 
     public async Task<string> GenerateTextAsync(string message, CancellationToken cancellationToken = default)
-    {
-        return await GenerateTextAsync(message, null, [], cancellationToken);
-    }
+        => await GenerateTextAsync(message, null, [], cancellationToken);
 
     public async Task<string> GenerateTextAsync(
         string message,
@@ -73,31 +74,15 @@ public class LlmService : ILlmService
 
         try
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_modelName}:generateContent?key={_apiKey}";
+            var text = await _api.Chat
+                .CreateConversation(_model)
+                .AppendSystemMessage(SystemPrompt)
+                .AppendUserInput(BuildUserPrompt(message, dialogContext, recentMessages))
+                .GetResponse(cancellationToken);
 
-            var request = new GeminiRequest
-            {
-                SystemInstruction = new GeminiContent
-                {
-                    Parts = [new GeminiPart { Text = SystemPrompt }]
-                },
-                Contents =
-                [
-                    new GeminiContent
-                    {
-                        Parts = [new GeminiPart { Text = BuildUserPrompt(message, dialogContext, recentMessages) }]
-                    }
-                ]
-            };
-
-            var response = await _httpClient.PostAsJsonAsync(url, request, JsonOptions, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<GeminiResponse>(JsonOptions, cancellationToken);
-            var text = result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
-
-            _logger.Debug("Generated cover text with {Length} characters", text.Length);
-            return text;
+            var result = (text ?? string.Empty).Trim().Trim('"');
+            _logger.Debug("Generated cover text with {Length} characters", result.Length);
+            return result;
         }
         catch (Exception ex)
         {
@@ -118,7 +103,7 @@ public class LlmService : ILlmService
 
         return $"""
                 Generate cover message for real message:
-                "{message}"
+                {message}
 
                 Dialog context:
                 {contextBlock}
@@ -130,31 +115,5 @@ public class LlmService : ILlmService
                 Never reveal or reuse real message content directly.
                 Return only generated cover message.
                 """;
-    }
-
-    private record GeminiRequest
-    {
-        public GeminiContent? SystemInstruction { get; init; }
-        public List<GeminiContent> Contents { get; init; } = [];
-    }
-
-    private record GeminiContent
-    {
-        public List<GeminiPart> Parts { get; init; } = [];
-    }
-
-    private record GeminiPart
-    {
-        public string? Text { get; init; }
-    }
-
-    private record GeminiResponse
-    {
-        public List<GeminiCandidate>? Candidates { get; init; }
-    }
-
-    private record GeminiCandidate
-    {
-        public GeminiContent? Content { get; init; }
     }
 }

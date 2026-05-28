@@ -58,11 +58,12 @@ public class MessagesController : ControllerBase
         string coverText;
         try
         {
+            using var llmCts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
             coverText = await _llmService.GenerateTextAsync(
                 request.OriginalText,
                 dialogContext?.ContextNotes,
                 recentMessages,
-                cancellationToken);
+                llmCts.Token);
         }
         catch (Exception ex)
         {

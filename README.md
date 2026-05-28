@@ -44,7 +44,7 @@
 - .NET 10.0 SDK
 - PostgreSQL 16+ (for production)
 - Docker (optional, for running PostgreSQL)
-- Google AI Studio API key (for Gemini LLM)
+- API key for your chosen LLM provider
 
 ## Development Setup
 
@@ -62,7 +62,7 @@ cd src/AlterEgo.Api
 dotnet user-secrets set "Database:ConnectionString" "Host=localhost;Port=5432;Database=alterego;Username=postgres;Password=postgres"
 dotnet user-secrets set "AdminUser:Password" "password"
 dotnet user-secrets set "Jwt:Key" "ABA8F7F09B6C2F7A42E63BD62873CA051A98BF1FB09B5EC006036E3B444134F42"
-dotnet user-secrets set "Gemini:ApiKey" "your-google-ai-studio-api-key"
+dotnet user-secrets set "Llm:ApiKey" "your-api-key"
 ```
 
 ### 3. Run PostgreSQL (optional)
@@ -93,12 +93,29 @@ Set in `appsettings.json` or `appsettings.Development.json`:
 | `InMemory` | In-memory database (default for Development) |
 | `PostgreSQL` | PostgreSQL database (default for Production) |
 
-### Gemini LLM
+### LLM Provider
 
 | Setting | Description |
 |---------|-------------|
-| `Gemini:ApiKey` | Google AI Studio API key (required) |
-| `Gemini:ModelName` | Model to use (default: `gemini-3-flash-preview`) |
+| `Llm:Provider` | Provider name (required, see table below) |
+| `Llm:ApiKey` | API key for the chosen provider (required) |
+| `Llm:ModelName` | Model to use (required) |
+
+Available providers:
+
+| `Llm:Provider` | Where to get API key | Example model |
+|----------------|----------------------|---------------|
+| `OpenAi` | platform.openai.com | `gpt-5.4-mini` |
+| `Anthropic` | console.anthropic.com | `claude-haiku-4-5` |
+| `Google` | aistudio.google.com | `gemini-3.1-flash-lite` |
+| `Groq` | console.groq.com | `llama-3.1-8b-instant` |
+| `Mistral` | console.mistral.ai | `mistral-small-4` |
+| `DeepSeek` | platform.deepseek.com | `deepseek-v4-flash` |
+| `XAi` | console.x.ai | `grok-4.3` |
+| `Cohere` | dashboard.cohere.com | `command-r-plus` |
+| `OpenRouter` | openrouter.ai | `meta-llama/llama-3.1-8b-instruct` |
+| `Perplexity` | perplexity.ai/settings/api | `sonar` |
+| `AzureOpenAi` | portal.azure.com | `gpt-5.4-mini` |
 
 ### Environment Variables (Production)
 
@@ -110,8 +127,9 @@ Set in `appsettings.json` or `appsettings.Development.json`:
 | `AdminUser__Username` | Admin username (default: `admin`) |
 | `AdminUser__Password` | Admin password |
 | `AdminUser__TelegramId` | Admin Telegram ID |
-| `Gemini__ApiKey` | Google AI Studio API key |
-| `Gemini__ModelName` | Gemini model name (optional) |
+| `Llm__Provider` | Provider name (e.g. `Google`, `OpenAi`, `Anthropic`) |
+| `Llm__ApiKey` | API key for the chosen provider |
+| `Llm__ModelName` | Model name |
 
 ## Production Deployment
 
@@ -129,7 +147,9 @@ export Database__Provider="PostgreSQL"
 export Database__ConnectionString="Host=db;Port=5432;Database=alterego;Username=alterego;Password=secure-password"
 export Jwt__Key="ABA8F7F09B6C2F7A42E63BD62873CA051A98BF1FB09B5EC006036E3B444134F42"
 export AdminUser__Password="password"
-export Gemini__ApiKey="your-google-ai-studio-api-key"
+export Llm__Provider="Google"
+export Llm__ApiKey="your-api-key"
+export Llm__ModelName="gemini-2.0-flash-001"
 ```
 
 ### 3. Run
