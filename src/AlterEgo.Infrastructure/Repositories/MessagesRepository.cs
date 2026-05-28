@@ -22,16 +22,20 @@ public class MessagesRepository : IMessagesRepository
 
     public async Task<MessageEntity?> GetByCoverTextHashAsync(long dialogId, long senderTelegramId, string coverTextHash, DateTimeOffset createdAt, CancellationToken cancellationToken = default)
     {
-        var tolerance = TimeSpan.FromMilliseconds(500);
+        var tolerance = TimeSpan.FromSeconds(1);
         var minTime = createdAt - tolerance;
         var maxTime = createdAt + tolerance;
 
-        return await _context.Messages
+        var query = _context.Messages
             .Where(x => x.DialogId == dialogId
-                        && x.SenderTelegramId == senderTelegramId
                         && x.CoverTextHash == coverTextHash
                         && x.CreatedAt >= minTime
-                        && x.CreatedAt <= maxTime)
+                        && x.CreatedAt <= maxTime);
+
+        if (senderTelegramId != 0)
+            query = query.Where(x => x.SenderTelegramId == senderTelegramId);
+
+        return await query
             .OrderBy(x => x.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
     }

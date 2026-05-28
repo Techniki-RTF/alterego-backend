@@ -22,7 +22,7 @@ public record PushMessageResponse(
     string OriginalText,
     DateTimeOffset CreatedAt);
 
-public record DecodeMessageRequest(long DialogId, long SenderTelegramId, string CoverText, DateTimeOffset ReceivedAt);
+public record DecodeMessageRequest(long DialogId, string CoverText, DateTimeOffset ReceivedAt, long SenderTelegramId = 0);
 
 public record MessageResponse(
     Guid Id,
